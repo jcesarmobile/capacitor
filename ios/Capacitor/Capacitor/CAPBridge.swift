@@ -48,7 +48,6 @@ enum BridgeError: Error {
     self.bridgeDelegate = bridgeDelegate
     self.userContentController = userContentController
     self.notificationsDelegate = CAPUNUserNotificationCenterDelegate()
-    CAPConfig.loadConfig()
     super.init()
     self.notificationsDelegate.bridge = self;
     localUrl = "\(CAPBridge.CAP_SCHEME)://\(CAPConfig.getString("server.hostname") ?? "localhost")"

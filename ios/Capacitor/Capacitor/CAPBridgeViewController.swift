@@ -20,6 +20,19 @@ public class CAPBridgeViewController: UIViewController, CAPBridgeDelegate, WKScr
   public var bridgedViewController: UIViewController? {
     return self
   }
+    
+  var imageView = UIImageView()
+  var image: UIImage?
+  var hideTask: Any?
+  var isVisible: Bool = false
+  
+  public let launchShowDuration = 3000
+  public let launchAutoHide = true
+  
+  public let defaultFadeInDuration = 200
+  public let defaultFadeOutDuration = 200
+  public let defaultShowDuration = 3000
+  public let defaultAutoHide = true
   
   private var hostname: String?
   private var allowNavigationConfig: [String]?
@@ -34,17 +47,124 @@ public class CAPBridgeViewController: UIViewController, CAPBridgeDelegate, WKScr
   
   
   override public func loadView() {
+    CAPConfig.loadConfig()
+    NSLog("load view")
+    buildViews()
+    self.imageView.backgroundColor = UIColor.red
+    view = self.imageView
+    showOnLaunch()
+    createWebView()
     setStatusBarDefaults()
     setScreenOrientationDefaults()
-
+  }
+  
+  func buildViews() {
+    // Find the image asset named "Splash"
+    // TODO: Find a way to not hard code this?
+    image = UIImage.init(named: "Splash")
+    
+    if image == nil {
+      print("Unable to find splash screen image. Make sure an image called Splash exists in your assets")
+    }
+    self.updateSplashImageBounds()
+  }
+  
+  func tearDown() {
+    self.isVisible = false
+    view.isUserInteractionEnabled = true
+    if self.view != self.imageView {
+      self.imageView.removeFromSuperview()
+    } else {
+      view = webView
+    }
+  }
+  
+  // Update the bounds for the splash image. This will also be called when
+  // the parent view observers fire
+  func updateSplashImageBounds() {
+    guard let delegate = UIApplication.shared.delegate else {
+      print("Unable to find root window object for SplashScreen bounds. Please file an issue")
+      return
+    }
+    
+    guard let window = delegate.window as? UIWindow else {
+      print("Unable to find root window object for SplashScreen bounds. Please file an issue")
+      return
+    }
+    imageView.image = image
+    imageView.frame = CGRect.init(origin: CGPoint.init(x: 0, y: 0), size: window.bounds.size)
+    imageView.contentMode = .scaleAspectFill
+  }
+  
+  
+  func showOnLaunch() {
+    NSLog("showOnLaunchss")
+    let launchShowDurationConfig = CAPConfig.getPluginConfigValue("SplashScreen", "launchShowDuration") as? Int ?? launchShowDuration
+    let launchAutoHideConfig = CAPConfig.getPluginConfigValue("SplashScreen", "launchAutoHide") as? Bool ?? launchAutoHide
+    showSplash(showDuration: launchShowDurationConfig, fadeInDuration: 0, fadeOutDuration: defaultFadeOutDuration, autoHide: launchAutoHideConfig, completion: {
+      
+    }, isLaunchSplash: true)
+  }
+  
+  func showSplash(showDuration: Int, fadeInDuration: Int, fadeOutDuration: Int, autoHide: Bool, completion: @escaping () -> Void, isLaunchSplash: Bool) {
+    
+    DispatchQueue.main.async {
+      if self.view != self.imageView {
+        self.view.addSubview(self.imageView)
+      }
+      
+      self.view.isUserInteractionEnabled = false
+      
+      UIView.transition(with: self.imageView, duration: TimeInterval(Double(fadeInDuration) / 1000), options: .curveLinear, animations: {
+        self.imageView.alpha = 1
+      }) { (finished: Bool) in
+        self.isVisible = true
+        NSLog("shown")
+        if autoHide {
+          self.hideTask = DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + (Double(showDuration) / 1000), execute: {
+            self.hideSplash(fadeOutDuration: fadeOutDuration, isLaunchSplash: isLaunchSplash)
+            completion()
+          })
+        }
+      }
+    }
+  }
+  
+  func hideSplash(fadeOutDuration: Int) {
+    self.hideSplash(fadeOutDuration: fadeOutDuration, isLaunchSplash: false);
+  }
+  
+  func hideSplash(fadeOutDuration: Int, isLaunchSplash: Bool) {
+    if(isLaunchSplash && isVisible) {
+      print("SplashScreen.hideSplash: SplashScreen was automatically hidden after default timeout. " +
+        "You should call `SplashScreen.hide()` as soon as your web app is loaded (or increase the timeout). " +
+        "Read more at https://capacitor.ionicframework.com/docs/apis/splash-screen/#hiding-the-splash-screen");
+    }
+    if !isVisible { return }
+    DispatchQueue.main.async {
+      UIView.transition(with: self.imageView, duration: TimeInterval(Double(fadeOutDuration) / 1000), options: .curveLinear, animations: {
+        self.imageView.alpha = 0
+      }) { (finished: Bool) in
+        self.tearDown()
+      }
+    }
+  }
+  
+  override public func viewDidLoad() {
+    super.viewDidLoad()
+    self.becomeFirstResponder()
+    loadWebView()
+  }
+  
+  func createWebView() {
     let webViewConfiguration = WKWebViewConfiguration()
-
+    
     webViewConfiguration.setURLSchemeHandler(CAPAssetHandler(), forURLScheme: CAPBridge.CAP_SCHEME)
     webViewConfiguration.setURLSchemeHandler(CAPAssetHandler(), forURLScheme: CAPBridge.CAP_FILE_SCHEME)
     
     let o = WKUserContentController()
     o.add(self, name: "bridge")
-
+    
     webViewConfiguration.userContentController = o
     
     configureWebView(configuration: webViewConfiguration)
@@ -57,20 +177,15 @@ public class CAPBridgeViewController: UIViewController, CAPBridgeDelegate, WKScr
     webView?.uiDelegate = self
     webView?.navigationDelegate = self
     webView?.configuration.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
-    view = webView
+    webView?.backgroundColor = UIColor.blue
+    webView.alph
     
     setKeyboardRequiresUserInteraction(false)
     
     bridge = CAPBridge(self, o)
     if let scrollEnabled = CAPConfig.getValue("ios.scrollEnabled") as? Bool {
-        webView?.scrollView.isScrollEnabled = scrollEnabled
+      webView?.scrollView.isScrollEnabled = scrollEnabled
     }
-  }
-  
-  override public func viewDidLoad() {
-    super.viewDidLoad()
-    self.becomeFirstResponder()
-    loadWebView()
   }
   
   func loadWebView() {
